@@ -1,25 +1,25 @@
 # Fine-Tuning Vision-Language-Action Models: Optimizing Speed and Success
 
-**Project website: https://openvla-oft.github.io/**
+**项目主页: https://openvla-oft.github.io/**
 
-**Paper: https://arxiv.org/abs/2502.19645**
+**论文: https://arxiv.org/abs/2502.19645**
 
-**Summary video: https://youtu.be/T3Zkkr_NTSA**
+**演示视频: https://youtu.be/T3Zkkr_NTSA**
 
-## System Requirements
+## 系统要求
 
-Inference:
-* 1 GPU with ~16 GB VRAM for LIBERO sim benchmark tasks
-* 1 GPU with ~18 GB VRAM for ALOHA robot tasks
+推理：
+* 1 张 GPU，约 16 GB 显存（适用于 LIBERO 仿真基准任务）
+* 1 张 GPU，约 18 GB 显存（适用于 ALOHA 机器人任务）
 
-Training:
-* Between 1-8 GPUs with 27-80 GB, depending on the desired training setup (with default bfloat16 data type). See [this FAQ on our project website](https://openvla-oft.github.io/#train-compute) for details.
+训练：
+* 1-8 张 GPU，27-80 GB 显存，取决于训练配置（默认使用 bfloat16 数据类型）。详细信息请参阅[项目主页的 FAQ](https://openvla-oft.github.io/#train-compute)。
 
-## Quick Start
+## 快速开始
 
-First, set up a conda environment (see instructions in [SETUP.md](SETUP.md)).
+首先，设置 conda 环境（请参阅 [SETUP.md](SETUP.md) 中的说明）。
 
-Then, run the Python script below to download a pretrained OpenVLA-OFT checkpoint and run inference to generate an action chunk:
+然后，运行以下 Python 脚本下载预训练的 OpenVLA-OFT 检查点并进行推理，生成动作块：
 
 ```python
 import pickle
@@ -27,7 +27,7 @@ from experiments.robot.libero.run_libero_eval import GenerateConfig
 from experiments.robot.openvla_utils import get_action_head, get_processor, get_proprio_projector, get_vla, get_vla_action
 from prismatic.vla.constants import NUM_ACTIONS_CHUNK, PROPRIO_DIM
 
-# Instantiate config (see class GenerateConfig in experiments/robot/libero/run_libero_eval.py for definitions)
+# 实例化配置（请参阅 experiments/robot/libero/run_libero_eval.py 中 GenerateConfig 类的定义）
 cfg = GenerateConfig(
     pretrained_checkpoint = "moojink/openvla-7b-oft-finetuned-libero-spatial",
     use_l1_regression = True,
@@ -42,56 +42,39 @@ cfg = GenerateConfig(
     unnorm_key = "libero_spatial_no_noops",
 )
 
-# Load OpenVLA-OFT policy and inputs processor
+# 加载 OpenVLA-OFT 策略和输入处理器
 vla = get_vla(cfg)
 processor = get_processor(cfg)
 
-# Load MLP action head to generate continuous actions (via L1 regression)
+# 加载 MLP 动作头以通过 L1 回归生成连续动作
 action_head = get_action_head(cfg, llm_dim=vla.llm_dim)
 
-# Load proprio projector to map proprio to language embedding space
+# 加载本体感投影器，将本体感映射到语言嵌入空间
 proprio_projector = get_proprio_projector(cfg, llm_dim=vla.llm_dim, proprio_dim=PROPRIO_DIM)
 
-# Load sample observation:
+# 加载样本观测：
 #   observation (dict): {
-#     "full_image": primary third-person image,
-#     "wrist_image": wrist-mounted camera image,
-#     "state": robot proprioceptive state,
-#     "task_description": task description,
+#     "full_image": 主要第三人称图像,
+#     "wrist_image": 腕部相机图像,
+#     "state": 机器人本体感知状态,
+#     "task_description": 任务描述,
 #   }
 with open("experiments/robot/libero/sample_libero_spatial_observation.pkl", "rb") as file:
     observation = pickle.load(file)
 
-# Generate robot action chunk (sequence of future actions)
+# 生成机器人动作块（未来动作序列）
 actions = get_vla_action(cfg, vla, processor, observation, observation["task_description"], action_head, proprio_projector)
-print("Generated action chunk:")
+print("生成的动作块：")
 for act in actions:
     print(act)
 ```
 
-## Installation
+## 安装
 
-See [SETUP.md](SETUP.md) for instructions on setting up the conda environment.
+有关设置 conda 环境的说明，请参阅 [SETUP.md](SETUP.md)。
 
-## Training and Evaluation
+## 训练与评估
 
-See [LIBERO.md](LIBERO.md) for fine-tuning/evaluating on LIBERO simulation benchmark task suites.
+有关在 LIBERO 仿真基准任务套件上进行微调/评估的说明，请参阅 [LIBERO.md](LIBERO.md)。
 
-See [ALOHA.md](ALOHA.md) for fine-tuning/evaluating on real-world ALOHA robot tasks.
-
-## Support
-
-If you run into any issues, please open a new GitHub issue. If you do not receive a response within 2 business days, please email Moo Jin Kim (moojink@cs.stanford.edu) to bring the issue to his attention.
-
-## Citation
-
-If you use our code in your work, please cite [our paper](https://arxiv.org/abs/2502.19645):
-
-```bibtex
-@article{kim2025fine,
-  title={Fine-Tuning Vision-Language-Action Models: Optimizing Speed and Success},
-  author={Kim, Moo Jin and Finn, Chelsea and Liang, Percy},
-  journal={arXiv preprint arXiv:2502.19645},
-  year={2025}
-}
-```
+有关在真实世界的 ALOHA 机器人任务上进行微调/评估的说明，请参阅 [ALOHA.md](ALOHA.md)。
