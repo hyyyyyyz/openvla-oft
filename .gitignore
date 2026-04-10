@@ -154,3 +154,5 @@ wandb/
 
 # Models
 models/
+checkpoints/
+experiments/logs
