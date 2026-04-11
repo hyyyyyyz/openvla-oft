@@ -23,6 +23,7 @@ from transformers import AutoModelForVision2Seq, AutoProcessor
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from prismatic.models.backbones.llm.prompting import PurePromptBuilder
+from prismatic.vla.action_tokenizer import ActionTokenizer
 from prismatic.vla.datasets import RLDSBatchTransform, RLDSDataset
 
 
@@ -107,7 +108,7 @@ def create_dataloader(cfg: TrainConfig, batch_transform):
     dataloader = DataLoader(
         dataset,
         batch_size=cfg.batch_size,
-        num_workers=4,
+        num_workers=0,  # Important: Set to 0 for RLDS which uses its own parallelism
         pin_memory=True,
         collate_fn=lambda x: x,
     )
@@ -155,9 +156,12 @@ def train_arm_a(cfg: TrainConfig):
     if cfg.world_size > 1:
         model = DDP(model, device_ids=[cfg.local_rank])
 
+    # Create action tokenizer
+    action_tokenizer = ActionTokenizer(processor.tokenizer)
+
     # Create batch transform
     batch_transform = RLDSBatchTransform(
-        action_tokenizer=processor.tokenizer,
+        action_tokenizer=action_tokenizer,
         base_tokenizer=processor.tokenizer,
         image_transform=processor.image_processor.apply_transform,
         prompt_builder_fn=PurePromptBuilder,
