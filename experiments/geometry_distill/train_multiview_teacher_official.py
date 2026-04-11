@@ -110,8 +110,16 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
     vla.print_trainable_parameters()
 
     # CRITICAL: Set number of images for multi-view
-    vla.vision_backbone.set_num_images_in_input(cfg.num_images_in_input)
-    print(f"Set num_images_in_input = {cfg.num_images_in_input}")
+    # Note: set_num_images_in_input is on the VLM model, not vision_backbone
+    if hasattr(vla, 'set_num_images_in_input'):
+        vla.set_num_images_in_input(cfg.num_images_in_input)
+        print(f"Set num_images_in_input = {cfg.num_images_in_input}")
+    else:
+        print(f"Warning: set_num_images_in_input not found, using default")
+        # Alternative: set on vision_backbone if it has the attribute
+        if hasattr(vla.vision_backbone, 'num_images_in_input'):
+            vla.vision_backbone.num_images_in_input = cfg.num_images_in_input
+            print(f"Set vision_backbone.num_images_in_input = {cfg.num_images_in_input}")
 
     # Create action tokenizer
     action_tokenizer = ActionTokenizer(processor.tokenizer)
