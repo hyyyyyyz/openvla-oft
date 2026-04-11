@@ -24,6 +24,7 @@ from transformers import AutoModelForVision2Seq, AutoProcessor
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
+from prismatic.models.backbones.llm.prompting import PurePromptBuilder
 from prismatic.vla.datasets import RLDSBatchTransform, RLDSDataset
 
 
@@ -423,7 +424,7 @@ def train_arm_d(cfg: RGBDTeacherConfig):
         action_tokenizer=processor.tokenizer,
         base_tokenizer=processor.tokenizer,
         image_transform=processor.image_processor.apply_transform,
-        prompt_builder_fn=processor.prompt_builder_fn,
+        prompt_builder_fn=PurePromptBuilder,
         use_depth=cfg.load_depth,  # Enable depth loading
     )
 
