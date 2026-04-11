@@ -129,16 +129,25 @@ def get_libero_rgbd_dataset_kwargs(dataset_name: str, data_dir: str, load_depth:
 
 def create_rgbd_dataloader(cfg: RGBDTeacherConfig, batch_transform, processor):
     """Create RLDS dataloader with depth support."""
-    # Get dataset kwargs with depth
-    dataset_kwargs = get_libero_rgbd_dataset_kwargs(
-        cfg.dataset_name, cfg.data_dir, load_depth=cfg.load_depth
-    )
+    # Map dataset name to OXE config name
+    dataset_name_map = {
+        "libero_spatial": "libero_spatial_no_noops",
+        "libero_object": "libero_object_no_noops",
+        "libero_goal": "libero_goal_no_noops",
+        "libero_10": "libero_10_no_noops",
+    }
+
+    # Get the correct dataset name for OXE_DATASET_CONFIGS
+    if cfg.dataset_name in dataset_name_map:
+        data_mix = dataset_name_map[cfg.dataset_name]
+    else:
+        data_mix = cfg.dataset_name
 
     # Create RLDS dataset with load_depth flag
     from prismatic.vla.datasets import RLDSDataset
     dataset = RLDSDataset(
         data_root_dir=Path(cfg.data_dir),
-        data_mix=dataset_kwargs["name"],
+        data_mix=data_mix,
         batch_transform=batch_transform,
         resize_resolution=(cfg.image_size, cfg.image_size),
         shuffle_buffer_size=cfg.shuffle_buffer_size,
