@@ -32,6 +32,7 @@ class RLDSBatchTransform:
     predict_stop_token: bool = True
     use_wrist_image: bool = False
     use_proprio: bool = False
+    use_depth: bool = False  # Enable depth loading for RGB-D teacher
 
     def __call__(self, rlds_batch: Dict[str, Any]) -> Dict[str, Any]:
         """Converts a RLDS batch to the format expected by the OpenVLA collator/models."""
@@ -87,6 +88,19 @@ class RLDSBatchTransform:
         if self.use_proprio and "proprio" in rlds_batch["observation"]:
             proprio = rlds_batch["observation"]["proprio"]
             return_dict["proprio"] = proprio
+        if self.use_depth and "depth_primary" in rlds_batch["observation"]:
+            # Process depth image for RGB-D teacher
+            depth = rlds_batch["observation"]["depth_primary"][0]
+            # Depth may need normalization - convert to PIL and apply transform
+            if depth.dtype != np.uint8:
+                # Normalize depth to 0-255 range for processing
+                depth = ((depth - depth.min()) / (depth.max() - depth.min() + 1e-8) * 255).astype(np.uint8)
+            if len(depth.shape) == 2:
+                depth = np.expand_dims(depth, axis=-1)  # Add channel dimension
+                depth = np.repeat(depth, 3, axis=-1)  # Convert to 3-channel for image_transform
+            depth_img = Image.fromarray(depth)
+            depth_values = self.image_transform(depth_img)
+            return_dict["depth_values"] = depth_values
 
         return return_dict
 
@@ -101,6 +115,7 @@ class RLDSDataset(IterableDataset):
         shuffle_buffer_size: int = 256_000,
         train: bool = True,
         image_aug: bool = False,
+        load_depth: bool = False,  # Enable depth loading for RGB-D
     ) -> None:
         """Lightweight wrapper around RLDS TFDS Pipeline for use with PyTorch/OpenVLA Data Loaders."""
         self.data_root_dir, self.data_mix, self.batch_transform = data_root_dir, data_mix, batch_transform
@@ -122,7 +137,7 @@ class RLDSDataset(IterableDataset):
             self.data_root_dir,
             mixture_spec,
             load_camera_views=load_camera_views,
-            load_depth=False,
+            load_depth=load_depth,
             load_proprio=True,
             load_language=True,
             action_proprio_normalization_type=ACTION_PROPRIO_NORMALIZATION_TYPE,
