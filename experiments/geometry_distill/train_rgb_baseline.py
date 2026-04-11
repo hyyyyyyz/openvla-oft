@@ -23,6 +23,7 @@ from transformers import AutoModelForVision2Seq, AutoProcessor
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from prismatic.models.backbones.llm.prompting import PurePromptBuilder
+from prismatic.util.data_utils import PaddedCollatorForActionPrediction
 from prismatic.vla.action_tokenizer import ActionTokenizer
 from prismatic.vla.datasets import RLDSBatchTransform, RLDSDataset
 
@@ -77,7 +78,7 @@ def setup_distributed(cfg: TrainConfig):
         cfg.world_size = 1
 
 
-def create_dataloader(cfg: TrainConfig, batch_transform):
+def create_dataloader(cfg: TrainConfig, batch_transform, action_tokenizer, processor):
     """Create RLDS dataloader for LIBERO."""
     # Map dataset name to OXE config name
     dataset_name_map = {
@@ -104,13 +105,20 @@ def create_dataloader(cfg: TrainConfig, batch_transform):
         load_depth=False,  # No depth for RGB baseline
     )
 
+    # Create collator for action prediction
+    collator = PaddedCollatorForActionPrediction(
+        processor.tokenizer.model_max_length,
+        processor.tokenizer.pad_token_id,
+        padding_side="right",
+    )
+
     # Create dataloader
     dataloader = DataLoader(
         dataset,
         batch_size=cfg.batch_size,
         num_workers=0,  # Important: Set to 0 for RLDS which uses its own parallelism
         pin_memory=True,
-        collate_fn=lambda x: x,
+        collate_fn=collator,
     )
 
     return dataloader
@@ -170,7 +178,7 @@ def train_arm_a(cfg: TrainConfig):
 
     # Create dataloader
     print(f"Creating dataloader for {cfg.dataset_name}")
-    dataloader = create_dataloader(cfg, batch_transform)
+    dataloader = create_dataloader(cfg, batch_transform, action_tokenizer, processor)
 
     # Create optimizer
     optimizer = torch.optim.AdamW(
