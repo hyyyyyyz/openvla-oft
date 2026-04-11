@@ -97,7 +97,15 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
         trust_remote_code=True,
     )
 
-    # Apply LoRA
+    # CRITICAL: Set number of images BEFORE applying LoRA
+    # This must be done on the base model, not the PEFT wrapper
+    if hasattr(vla, 'set_num_images_in_input'):
+        vla.set_num_images_in_input(cfg.num_images_in_input)
+        print(f"Set num_images_in_input = {cfg.num_images_in_input}")
+    else:
+        print(f"Warning: set_num_images_in_input not found on base model")
+
+    # Apply LoRA AFTER setting num_images_in_input
     print(f"Applying LoRA with rank={cfg.lora_rank}")
     lora_config = LoraConfig(
         r=cfg.lora_rank,
@@ -108,18 +116,6 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
     )
     vla = get_peft_model(vla, lora_config)
     vla.print_trainable_parameters()
-
-    # CRITICAL: Set number of images for multi-view
-    # Note: set_num_images_in_input is on the VLM model, not vision_backbone
-    if hasattr(vla, 'set_num_images_in_input'):
-        vla.set_num_images_in_input(cfg.num_images_in_input)
-        print(f"Set num_images_in_input = {cfg.num_images_in_input}")
-    else:
-        print(f"Warning: set_num_images_in_input not found, using default")
-        # Alternative: set on vision_backbone if it has the attribute
-        if hasattr(vla.vision_backbone, 'num_images_in_input'):
-            vla.vision_backbone.num_images_in_input = cfg.num_images_in_input
-            print(f"Set vision_backbone.num_images_in_input = {cfg.num_images_in_input}")
 
     # Create action tokenizer
     action_tokenizer = ActionTokenizer(processor.tokenizer)
