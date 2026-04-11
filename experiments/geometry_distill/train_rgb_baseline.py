@@ -194,8 +194,8 @@ def train_arm_a(cfg: TrainConfig):
 
     for epoch in range(cfg.num_epochs):
         for step, batch in enumerate(dataloader):
-            # Move batch to device
-            pixel_values = batch["pixel_values"].to(device)
+            # Move batch to device and convert to bfloat16
+            pixel_values = batch["pixel_values"].to(device, dtype=torch.bfloat16)
             input_ids = batch["input_ids"].to(device)
             labels = batch["labels"].to(device)
             attention_mask = batch.get("attention_mask", None)
