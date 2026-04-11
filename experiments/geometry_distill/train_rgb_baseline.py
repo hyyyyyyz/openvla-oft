@@ -9,11 +9,12 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 import draccus
 import torch
 import torch.distributed as dist
+from peft import LoraConfig, get_peft_model
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from transformers import AutoModelForVision2Seq, AutoProcessor
@@ -21,10 +22,8 @@ from transformers import AutoModelForVision2Seq, AutoProcessor
 # Add project root to path
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
+from prismatic.models.backbones.llm.prompting import PurePromptBuilder
 from prismatic.vla.datasets import RLDSBatchTransform, RLDSDataset
-from prismatic.vla.datasets.rlds.oxe import make_oxe_dataset_kwargs
-from prismatic.vla.datasets.rlds.oxe.configs import OXE_DATASET_CONFIGS
-from prismatic.vla.datasets.rlds.oxe.mixtures import OXE_MIXTURES
 
 
 @dataclass
@@ -39,7 +38,7 @@ class TrainConfig:
 
     # Dataset parameters
     dataset_name: str = "libero_spatial"             # Dataset name (libero_spatial, libero_goal, etc.)
-    data_dir: str = "/path/to/modified_libero_rlds"  # RLDS data directory
+    data_dir: str = "/home/hurricane/VLA/modified_libero_rlds"  # RLDS data directory
     shuffle_buffer_size: int = 100_000               # Shuffle buffer size
     image_size: int = 224                            # Image size for training
 
@@ -51,7 +50,6 @@ class TrainConfig:
     weight_decay: float = 0.0                        # Weight decay
     grad_clip: float = 1.0                           # Gradient clipping
     save_steps: int = 1000                           # Save checkpoint every N steps
-    eval_steps: int = 500                            # Evaluate every N steps
     log_steps: int = 10                              # Log every N steps
 
     # Output directories
@@ -62,10 +60,6 @@ class TrainConfig:
     local_rank: int = 0                              # Local rank for DDP
     world_size: int = 1                              # World size for DDP
     seed: int = 7                                    # Random seed
-
-    # LIBERO specific
-    task_suite: str = "libero_spatial"               # LIBERO task suite
-    num_actions_chunk: int = 10                      # Action chunk size
 
     # fmt: on
 
@@ -82,46 +76,31 @@ def setup_distributed(cfg: TrainConfig):
         cfg.world_size = 1
 
 
-def get_libero_dataset_kwargs(dataset_name: str, data_dir: str):
-    """Get LIBERO dataset kwargs for OXE config."""
-    # LIBERO datasets use modified_libero_rlds format
-    # Map dataset_name to OXE config
-    if "spatial" in dataset_name.lower():
-        base_name = "libero_spatial"
-    elif "object" in dataset_name.lower():
-        base_name = "libero_object"
-    elif "goal" in dataset_name.lower():
-        base_name = "libero_goal"
-    elif "10" in dataset_name.lower():
-        base_name = "libero_10"
-    else:
-        base_name = dataset_name
-
-    # Create dataset kwargs
-    dataset_kwargs = {
-        "name": base_name,
-        "data_dir": data_dir,
-        "image_obs_keys": {"primary": "image", "secondary": None, "wrist": "wrist_image"},
-        "depth_obs_keys": {"primary": None, "secondary": None, "wrist": None},  # No depth for Arm A
-        "state_obs_keys": ["state"],
-        "state_encoding": 1,  # POS_EULER
-        "action_encoding": 1,  # EEF_POS
-    }
-    return dataset_kwargs
-
-
 def create_dataloader(cfg: TrainConfig, batch_transform):
     """Create RLDS dataloader for LIBERO."""
-    # Get dataset kwargs
-    dataset_kwargs = get_libero_dataset_kwargs(cfg.dataset_name, cfg.data_dir)
+    # Map dataset name to OXE config name
+    dataset_name_map = {
+        "libero_spatial": "libero_spatial_no_noops",
+        "libero_object": "libero_object_no_noops",
+        "libero_goal": "libero_goal_no_noops",
+        "libero_10": "libero_10_no_noops",
+    }
+
+    # Get the correct dataset name for OXE_DATASET_CONFIGS
+    if cfg.dataset_name in dataset_name_map:
+        data_mix = dataset_name_map[cfg.dataset_name]
+    else:
+        data_mix = cfg.dataset_name
 
     # Create RLDS dataset
     dataset = RLDSDataset(
-        data_dir=cfg.data_dir,
-        dataset_kwargs=[dataset_kwargs],
+        data_root_dir=Path(cfg.data_dir),
+        data_mix=data_mix,
         batch_transform=batch_transform,
+        resize_resolution=(cfg.image_size, cfg.image_size),
         shuffle_buffer_size=cfg.shuffle_buffer_size,
         train=True,
+        load_depth=False,  # No depth for RGB baseline
     )
 
     # Create dataloader
@@ -130,7 +109,7 @@ def create_dataloader(cfg: TrainConfig, batch_transform):
         batch_size=cfg.batch_size,
         num_workers=4,
         pin_memory=True,
-        collate_fn=lambda x: x,  # RLDS handles batching
+        collate_fn=lambda x: x,
     )
 
     return dataloader
@@ -149,20 +128,28 @@ def train_arm_a(cfg: TrainConfig):
 
     # Load base model and processor
     print(f"Loading base model: {cfg.base_model}")
-    model = AutoModelForVision2Seq.from_pretrained(
+    base_model = AutoModelForVision2Seq.from_pretrained(
         cfg.base_model,
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
     )
     processor = AutoProcessor.from_pretrained(cfg.base_model, trust_remote_code=True)
 
+    # Apply LoRA to base model
+    print(f"Applying LoRA with rank={cfg.lora_rank}")
+    lora_config = LoraConfig(
+        r=cfg.lora_rank,
+        lora_alpha=min(cfg.lora_rank, 16),
+        lora_dropout=cfg.lora_dropout,
+        target_modules="all-linear",
+        init_lora_weights="gaussian",
+    )
+    base_model = get_peft_model(base_model, lora_config)
+    base_model.print_trainable_parameters()
+
     # Move model to GPU
     device = torch.device(f"cuda:{cfg.local_rank}")
-    model = model.to(device)
-
-    # Apply LoRA
-    print(f"Applying LoRA with rank={cfg.lora_rank}")
-    # TODO: Apply LoRA to model (using PEFT or custom implementation)
+    model = base_model.to(device)
 
     # Wrap with DDP if distributed
     if cfg.world_size > 1:
@@ -170,9 +157,11 @@ def train_arm_a(cfg: TrainConfig):
 
     # Create batch transform
     batch_transform = RLDSBatchTransform(
-        action_tokenizer=processor.action_tokenizer,
-        image_transform=processor.image_transform,
-        prompt_builder_fn=processor.prompt_builder_fn,
+        action_tokenizer=processor.tokenizer,
+        base_tokenizer=processor.tokenizer,
+        image_transform=processor.image_processor.apply_transform,
+        prompt_builder_fn=PurePromptBuilder,
+        use_depth=False,  # No depth for RGB baseline
     )
 
     # Create dataloader
@@ -193,12 +182,27 @@ def train_arm_a(cfg: TrainConfig):
 
     for epoch in range(cfg.num_epochs):
         for step, batch in enumerate(dataloader):
+            # Move batch to device
+            pixel_values = batch["pixel_values"].to(device)
+            input_ids = batch["input_ids"].to(device)
+            labels = batch["labels"].to(device)
+            attention_mask = batch.get("attention_mask", None)
+            if attention_mask is not None:
+                attention_mask = attention_mask.to(device)
+
             # Forward pass
-            # TODO: Implement forward pass with action prediction loss
+            outputs = model(
+                pixel_values=pixel_values,
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                labels=labels,
+            )
+
+            loss = outputs.loss
 
             # Backward pass
             optimizer.zero_grad()
-            # loss.backward()
+            loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.grad_clip)
             optimizer.step()
 
@@ -206,19 +210,28 @@ def train_arm_a(cfg: TrainConfig):
 
             # Logging
             if global_step % cfg.log_steps == 0 and cfg.local_rank == 0:
-                print(f"Epoch {epoch}, Step {global_step}, Loss: {0.0:.4f}")
+                print(f"Epoch {epoch}, Step {global_step}, Loss: {loss.item():.4f}")
 
             # Save checkpoint
             if global_step % cfg.save_steps == 0 and cfg.local_rank == 0:
-                checkpoint_path = os.path.join(cfg.output_dir, f"checkpoint-{global_step}")
-                print(f"Saving checkpoint to {checkpoint_path}")
-                # TODO: Save checkpoint
+                save_path = os.path.join(cfg.output_dir, f"checkpoint-{global_step}")
+                os.makedirs(save_path, exist_ok=True)
+                # Save the model
+                if cfg.world_size > 1:
+                    model.module.save_pretrained(save_path)
+                else:
+                    model.save_pretrained(save_path)
+                print(f"Saved checkpoint to {save_path}")
 
     # Save final checkpoint
     if cfg.local_rank == 0:
         final_path = os.path.join(cfg.output_dir, "final")
-        print(f"Saving final checkpoint to {final_path}")
-        # TODO: Save final checkpoint
+        os.makedirs(final_path, exist_ok=True)
+        if cfg.world_size > 1:
+            model.module.save_pretrained(final_path)
+        else:
+            model.save_pretrained(final_path)
+        print(f"Saved final checkpoint to {final_path}")
 
     # Cleanup distributed
     if cfg.world_size > 1:
