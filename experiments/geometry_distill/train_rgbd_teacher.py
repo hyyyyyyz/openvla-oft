@@ -38,7 +38,7 @@ class RGBDTeacherConfig:
 
     # Dataset parameters
     dataset_name: str = "libero_spatial"             # Dataset name
-    data_dir: str = "/path/to/modified_libero_rlds"  # RLDS data directory
+    data_dir: str = "/home/hurricane/VLA/modified_libero_rlds"  # RLDS data directory
     shuffle_buffer_size: int = 100_000               # Shuffle buffer size
     image_size: int = 224                            # Image size for training
 
