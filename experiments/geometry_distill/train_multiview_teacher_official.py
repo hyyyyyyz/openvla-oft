@@ -12,6 +12,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import logging
 
 import draccus
 import torch
@@ -77,19 +78,31 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
         mixed_precision="bf16",
     )
 
-    # Set seed
-    torch.manual_seed(cfg.seed)
-
     # Create output directory
     run_dir = Path(cfg.run_root_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Setup logging to file
+    log_file = run_dir / "training.log"
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    logger = logging.getLogger(__name__)
+
+    # Set seed
+    torch.manual_seed(cfg.seed)
 
     # Load processor
     processor = AutoProcessor.from_pretrained(cfg.vla_path, trust_remote_code=True)
 
     # Load base model
-    print(f"Loading base model: {cfg.vla_path}")
-    print(f"Multi-view mode: {cfg.num_images_in_input} images (static + wrist)")
+    logger.info(f"Loading base model: {cfg.vla_path}")
+    logger.info(f"Multi-view mode: {cfg.num_images_in_input} images (static + wrist)")
 
     vla = AutoModelForVision2Seq.from_pretrained(
         cfg.vla_path,
@@ -101,12 +114,12 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
     # This must be done on the vision_backbone, not the VLA model itself
     if hasattr(vla.vision_backbone, 'set_num_images_in_input'):
         vla.vision_backbone.set_num_images_in_input(cfg.num_images_in_input)
-        print(f"Set num_images_in_input = {cfg.num_images_in_input}")
+        logger.info(f"Set num_images_in_input = {cfg.num_images_in_input}")
     else:
-        print(f"Warning: set_num_images_in_input not found on vision_backbone")
+        logger.warning(f"Warning: set_num_images_in_input not found on vision_backbone")
 
     # Apply LoRA AFTER setting num_images_in_input
-    print(f"Applying LoRA with rank={cfg.lora_rank}")
+    logger.info(f"Applying LoRA with rank={cfg.lora_rank}")
     lora_config = LoraConfig(
         r=cfg.lora_rank,
         lora_alpha=min(cfg.lora_rank, 16),
@@ -122,7 +135,7 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
 
     # CRITICAL: Enable wrist image in batch transform
     use_wrist_image = cfg.num_images_in_input > 1
-    print(f"use_wrist_image = {use_wrist_image}")
+    logger.info(f"use_wrist_image = {use_wrist_image}")
 
     batch_transform = RLDSBatchTransform(
         action_tokenizer=action_tokenizer,
@@ -171,7 +184,7 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
     vla, optimizer, dataloader = accelerator.prepare(vla, optimizer, dataloader)
 
     # Training loop
-    print(f"Starting multi-view teacher training for {cfg.max_steps} steps")
+    logger.info(f"Starting multi-view teacher training for {cfg.max_steps} steps")
     vla.train()
     optimizer.zero_grad()
 
@@ -201,15 +214,14 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
 
         # Logging
         if global_step % cfg.log_freq == 0 and accelerator.is_main_process:
-            # Use scientific notation for better precision
-            print(f"Step {global_step}, Loss: {loss.item():.6e}")
+            logger.info(f"Step {global_step}, Loss: {loss.item():.6e}")
 
         # Save checkpoint
         if global_step % cfg.save_freq == 0 and accelerator.is_main_process:
             checkpoint_dir = run_dir / f"checkpoint-{global_step}"
             checkpoint_dir.mkdir(parents=True, exist_ok=True)
             accelerator.unwrap_model(vla).save_pretrained(checkpoint_dir)
-            print(f"Saved checkpoint to {checkpoint_dir}")
+            logger.info(f"Saved checkpoint to {checkpoint_dir}")
 
         if global_step >= cfg.max_steps:
             break
@@ -219,9 +231,9 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
         final_dir = run_dir / "final"
         final_dir.mkdir(parents=True, exist_ok=True)
         accelerator.unwrap_model(vla).save_pretrained(final_dir)
-        print(f"Saved final checkpoint to {final_dir}")
+        logger.info(f"Saved final checkpoint to {final_dir}")
 
-    print("Multi-view teacher training complete!")
+    logger.info("Multi-view teacher training complete!")
 
 
 @draccus.wrap()
