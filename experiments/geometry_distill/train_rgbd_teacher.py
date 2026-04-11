@@ -394,14 +394,8 @@ def train_arm_d(cfg: RGBDTeacherConfig):
     )
     processor = AutoProcessor.from_pretrained(cfg.base_model, trust_remote_code=True)
 
-    # Wrap with RGB-D support
-    model = RGBDOpenVLA(base_model, num_depth_bins=cfg.num_depth_bins)
-
-    # Move model to GPU
-    device = torch.device(f"cuda:{cfg.local_rank}")
-    model = model.to(device)
-
-    # Apply LoRA
+    # Apply LoRA to base model FIRST (before RGBD wrapper)
+    # This is needed because get_peft_model requires PreTrainedModel
     print(f"Applying LoRA with rank={cfg.lora_rank}")
     lora_config = LoraConfig(
         r=cfg.lora_rank,
@@ -410,8 +404,15 @@ def train_arm_d(cfg: RGBDTeacherConfig):
         target_modules="all-linear",
         init_lora_weights="gaussian",
     )
-    model = get_peft_model(model, lora_config)
-    model.print_trainable_parameters()
+    base_model = get_peft_model(base_model, lora_config)
+    base_model.print_trainable_parameters()
+
+    # Wrap with RGB-D support
+    model = RGBDOpenVLA(base_model, num_depth_bins=cfg.num_depth_bins)
+
+    # Move model to GPU
+    device = torch.device(f"cuda:{cfg.local_rank}")
+    model = model.to(device)
 
     # Wrap with DDP if distributed
     if cfg.world_size > 1:
