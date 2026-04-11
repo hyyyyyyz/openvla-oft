@@ -98,12 +98,12 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
     )
 
     # CRITICAL: Set number of images BEFORE applying LoRA
-    # This must be done on the base model, not the PEFT wrapper
-    if hasattr(vla, 'set_num_images_in_input'):
-        vla.set_num_images_in_input(cfg.num_images_in_input)
+    # This must be done on the vision_backbone, not the VLA model itself
+    if hasattr(vla.vision_backbone, 'set_num_images_in_input'):
+        vla.vision_backbone.set_num_images_in_input(cfg.num_images_in_input)
         print(f"Set num_images_in_input = {cfg.num_images_in_input}")
     else:
-        print(f"Warning: set_num_images_in_input not found on base model")
+        print(f"Warning: set_num_images_in_input not found on vision_backbone")
 
     # Apply LoRA AFTER setting num_images_in_input
     print(f"Applying LoRA with rank={cfg.lora_rank}")
