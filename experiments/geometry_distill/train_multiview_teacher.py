@@ -368,10 +368,11 @@ def train_arm_d(cfg: MultiViewTeacherConfig):
             if global_step % cfg.save_steps == 0 and cfg.local_rank == 0:
                 save_path = os.path.join(cfg.output_dir, f"checkpoint-{global_step}")
                 os.makedirs(save_path, exist_ok=True)
+                # Save the base model (LoRA weights)
                 if cfg.world_size > 1:
-                    model.module.save_pretrained(save_path)
+                    model.module.base_model.save_pretrained(save_path)
                 else:
-                    model.save_pretrained(save_path)
+                    model.base_model.save_pretrained(save_path)
                 print(f"Saved checkpoint to {save_path}")
 
     # Save final checkpoint
@@ -379,9 +380,9 @@ def train_arm_d(cfg: MultiViewTeacherConfig):
         final_path = os.path.join(cfg.output_dir, "final")
         os.makedirs(final_path, exist_ok=True)
         if cfg.world_size > 1:
-            model.module.save_pretrained(final_path)
+            model.module.base_model.save_pretrained(final_path)
         else:
-            model.save_pretrained(final_path)
+            model.base_model.save_pretrained(final_path)
         print(f"Saved final checkpoint to {final_path}")
 
     # Cleanup
