@@ -422,7 +422,7 @@ def train_arm_d(cfg: RGBDTeacherConfig):
     batch_transform = RLDSBatchTransform(
         action_tokenizer=processor.tokenizer,
         base_tokenizer=processor.tokenizer,
-        image_transform=processor.image_transform,
+        image_transform=processor.image_processor.apply_transform,
         prompt_builder_fn=processor.prompt_builder_fn,
         use_depth=cfg.load_depth,  # Enable depth loading
     )
