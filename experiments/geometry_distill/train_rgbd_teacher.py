@@ -16,6 +16,7 @@ from typing import Optional, Union
 import draccus
 import torch
 import torch.distributed as dist
+from peft import LoraConfig, get_peft_model
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from transformers import AutoModelForVision2Seq, AutoProcessor
@@ -402,7 +403,15 @@ def train_arm_d(cfg: RGBDTeacherConfig):
 
     # Apply LoRA
     print(f"Applying LoRA with rank={cfg.lora_rank}")
-    # TODO: Apply LoRA
+    lora_config = LoraConfig(
+        r=cfg.lora_rank,
+        lora_alpha=min(cfg.lora_rank, 16),
+        lora_dropout=cfg.lora_dropout,
+        target_modules="all-linear",
+        init_lora_weights="gaussian",
+    )
+    model = get_peft_model(model, lora_config)
+    model.print_trainable_parameters()
 
     # Wrap with DDP if distributed
     if cfg.world_size > 1:
