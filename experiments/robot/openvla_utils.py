@@ -778,6 +778,7 @@ def get_vla_action(
         inputs = {
             "pixel_values": torch.cat(all_pixel_values, dim=1),  # [1, 6*num_images, H, W]
             "attention_mask": first_inputs["attention_mask"],
+            "input_ids": first_inputs["input_ids"],
         }
 
         # Process proprioception data if used
