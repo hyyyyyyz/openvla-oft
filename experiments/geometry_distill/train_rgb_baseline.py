@@ -7,6 +7,10 @@ This is the lower bound baseline for geometry-critical failure diagnosis.
 
 import os
 import sys
+# Limit TensorFlow threads to avoid main thread blocking
+os.environ["TF_NUM_INTEROP_THREADS"] = "1"
+os.environ["TF_NUM_INTRAOP_THREADS"] = "1"
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -41,18 +45,19 @@ class TrainConfig:
     # Dataset parameters
     dataset_name: str = "libero_spatial"             # Dataset name (libero_spatial, libero_goal, etc.)
     data_dir: str = "/home/hurricane/VLA/modified_libero_rlds"  # RLDS data directory
-    shuffle_buffer_size: int = 100_000               # Shuffle buffer size
+    shuffle_buffer_size: int = 10_000               # Shuffle buffer size (same as Arm D)
     image_size: int = 224                            # Image size for training
 
     # Training parameters
-    batch_size: int = 16                             # Batch size per GPU
-    num_epochs: int = 10                             # Number of epochs
+    batch_size: int = 1                              # Batch size per GPU (1 for 24GB GPU)
+    num_epochs: int = 100                            # Large enough; actual stop controlled by max_steps
+    max_steps: int = 30000                           # Stop training after N steps
     learning_rate: float = 5e-4                      # Learning rate
     warmup_steps: int = 1000                         # Warmup steps
     weight_decay: float = 0.0                        # Weight decay
     grad_clip: float = 1.0                           # Gradient clipping
     save_steps: int = 1000                           # Save checkpoint every N steps
-    log_steps: int = 10                              # Log every N steps
+    log_steps: int = 50                              # Log every N steps
 
     # Output directories
     output_dir: str = "./checkpoints/arm_a_rgb"      # Output checkpoint directory
@@ -117,7 +122,7 @@ def create_dataloader(cfg: TrainConfig, batch_transform, action_tokenizer, proce
         dataset,
         batch_size=cfg.batch_size,
         num_workers=0,  # Important: Set to 0 for RLDS which uses its own parallelism
-        pin_memory=True,
+        pin_memory=False,  # False with num_workers=0 to avoid main thread blocking
         collate_fn=collator,
     )
 
@@ -135,8 +140,22 @@ def train_arm_a(cfg: TrainConfig):
     # Create output directory
     os.makedirs(cfg.output_dir, exist_ok=True)
 
-    # Load base model and processor
-    print(f"Loading base model: {cfg.base_model}")
+    # Setup logging to file
+    log_file = os.path.join(cfg.output_dir, "training.log")
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    logger = logging.getLogger(__name__)
+    logger.info(f"Output directory: {cfg.output_dir}")
+    logger.info(f"Dataset: {cfg.dataset_name}, Batch size: {cfg.batch_size}, Epochs: {cfg.num_epochs}, Max steps: {cfg.max_steps}")
+
+            # Load base model and processor
+    logger.info(f"Loading base model: {cfg.base_model}")
     base_model = AutoModelForVision2Seq.from_pretrained(
         cfg.base_model,
         torch_dtype=torch.bfloat16,
@@ -145,7 +164,7 @@ def train_arm_a(cfg: TrainConfig):
     processor = AutoProcessor.from_pretrained(cfg.base_model, trust_remote_code=True)
 
     # Apply LoRA to base model
-    print(f"Applying LoRA with rank={cfg.lora_rank}")
+    logger.info(f"Applying LoRA with rank={cfg.lora_rank}")
     lora_config = LoraConfig(
         r=cfg.lora_rank,
         lora_alpha=min(cfg.lora_rank, 16),
@@ -177,7 +196,7 @@ def train_arm_a(cfg: TrainConfig):
     )
 
     # Create dataloader
-    print(f"Creating dataloader for {cfg.dataset_name}")
+    logger.info(f"Creating dataloader for {cfg.dataset_name}")
     dataloader = create_dataloader(cfg, batch_transform, action_tokenizer, processor)
 
     # Create optimizer
@@ -188,12 +207,17 @@ def train_arm_a(cfg: TrainConfig):
     )
 
     # Training loop
-    print(f"Starting training for {cfg.num_epochs} epochs")
+    logger.info(f"Starting training for {cfg.num_epochs} epochs (target max_steps={cfg.max_steps})")
     global_step = 0
     model.train()
 
     for epoch in range(cfg.num_epochs):
         for step, batch in enumerate(dataloader):
+            if global_step >= cfg.max_steps:
+                logger.info(f"Reached max_steps={cfg.max_steps}, stopping training")
+                break
+        if global_step >= cfg.max_steps:
+            break
             # Move batch to device and convert to bfloat16
             pixel_values = batch["pixel_values"].to(device, dtype=torch.bfloat16)
             input_ids = batch["input_ids"].to(device)
@@ -222,7 +246,7 @@ def train_arm_a(cfg: TrainConfig):
 
             # Logging
             if global_step % cfg.log_steps == 0 and cfg.local_rank == 0:
-                print(f"Epoch {epoch}, Step {global_step}, Loss: {loss.item():.4f}")
+                logger.info(f"Epoch {epoch}, Step {global_step}, Loss: {loss.item():.4f}")
 
             # Save checkpoint
             if global_step % cfg.save_steps == 0 and cfg.local_rank == 0:
@@ -233,7 +257,7 @@ def train_arm_a(cfg: TrainConfig):
                     model.module.save_pretrained(save_path)
                 else:
                     model.save_pretrained(save_path)
-                print(f"Saved checkpoint to {save_path}")
+                logger.info(f"Saved checkpoint to {save_path}")
 
     # Save final checkpoint
     if cfg.local_rank == 0:
@@ -243,13 +267,13 @@ def train_arm_a(cfg: TrainConfig):
             model.module.save_pretrained(final_path)
         else:
             model.save_pretrained(final_path)
-        print(f"Saved final checkpoint to {final_path}")
+        logger.info(f"Saved final checkpoint to {final_path}")
 
     # Cleanup distributed
     if cfg.world_size > 1:
         dist.destroy_process_group()
 
-    print("Training complete!")
+    logger.info("Training complete!")
 
 
 @draccus.wrap()

@@ -52,13 +52,14 @@ class MultiViewTeacherConfig:
 
     # Training parameters
     batch_size: int = 1                              # Batch size per GPU (locked at 1 for 24GB)
-    num_epochs: int = 10                             # Number of epochs
+    num_epochs: int = 100                            # Large enough; actual stop controlled by max_steps
     learning_rate: float = 5e-4                      # Learning rate
     warmup_steps: int = 1000                         # Warmup steps
     weight_decay: float = 0.0                        # Weight decay
     grad_clip: float = 1.0                           # Gradient clipping
     save_steps: int = 1000                           # Save checkpoint every N steps
     log_steps: int = 10                              # Log every N steps
+    max_steps: int = 30000                          # Stop training after N steps (0 = no limit)
 
     # Output directories
     output_dir: str = "./checkpoints/arm_d_multiview"  # Output checkpoint directory
@@ -150,9 +151,8 @@ class MultiViewOpenVLA(nn.Module):
         all_patch_features = []
         for i in range(num_images):
             view_pixels = pixel_values[:, i]  # (B, C, H, W)
-            # Get vision features from base model
-            with torch.no_grad():
-                patch_features = self.vision_backbone(view_pixels)  # (B, num_patches, vision_dim)
+            # Get vision features from base model (allow gradients for fine-tuning)
+            patch_features = self.vision_backbone(view_pixels)  # (B, num_patches, vision_dim)
             all_patch_features.append(patch_features)
 
         # Stack features: (B, num_views, num_patches, vision_dim)
@@ -363,6 +363,18 @@ def train_arm_d(cfg: MultiViewTeacherConfig):
             # Logging
             if global_step % cfg.log_steps == 0 and cfg.local_rank == 0:
                 print(f"Epoch {epoch}, Step {global_step}, Loss: {loss.item():.4f}")
+
+            # Stop if max_steps reached
+            if cfg.max_steps > 0 and global_step >= cfg.max_steps:
+                if cfg.local_rank == 0:
+                    final_path = os.path.join(cfg.output_dir, "final")
+                    os.makedirs(final_path, exist_ok=True)
+                    if cfg.world_size > 1:
+                        model.module.base_model.save_pretrained(final_path)
+                    else:
+                        model.base_model.save_pretrained(final_path)
+                    print(f"Reached max_steps={cfg.max_steps}, saved final to {final_path}")
+                return
 
             # Save checkpoint
             if global_step % cfg.save_steps == 0 and cfg.local_rank == 0:
