@@ -379,6 +379,10 @@ def _load_dataset_stats(vla: torch.nn.Module, checkpoint_path: str) -> None:
         with open(dataset_statistics_path, "r") as f:
             norm_stats = json.load(f)
         vla.norm_stats = norm_stats
+        # When wrapped in PeftModel, predict_action() uses self.norm_stats on the *base* model
+        # (not the PeftModel wrapper), so sync norm_stats to the underlying model as well.
+        if hasattr(vla, "base_model") and hasattr(vla.base_model, "model"):
+            vla.base_model.model.norm_stats = norm_stats
     else:
         print(
             "WARNING: No local dataset_statistics.json file found for current checkpoint.\n"
