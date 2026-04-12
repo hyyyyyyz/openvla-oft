@@ -62,7 +62,7 @@ class MultiViewTeacherConfig:
     max_steps: int = 30000                          # Stop training after N steps (0 = no limit)
 
     # Output directories
-    output_dir: str = "./checkpoints/arm_d_multiview"  # Output checkpoint directory
+    output_dir: str = "./checkpoints/arm_d_official"  # Output checkpoint directory (matches eval)
     run_name: Optional[str] = None                   # Run name for logging
 
     # Distributed training
