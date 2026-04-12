@@ -65,4 +65,6 @@ try:
     print(f"Action (first 3 dims): {action[0][:3]}")
     print(f"Action range: [{action.min():.4f}, {action.max():.4f}]")
 except Exception as e:
+    import traceback
     print(f"FAILED: {str(e)[:300]}")
+    traceback.print_exc()
