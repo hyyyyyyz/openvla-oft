@@ -761,27 +761,24 @@ def get_vla_action(
         if cfg.num_images_in_input > 1:
             all_images.extend([obs[k] for k in obs.keys() if "wrist" in k])
 
-        # Process images
-        all_images = prepare_images_for_vla(all_images, cfg)
-
-        # Extract primary image and additional images
-        primary_image = all_images.pop(0)
-
         # Build VLA prompt
         prompt = f"In: What action should the robot take to {task_label.lower()}?\nOut:"
 
-        # Process primary image
-        inputs = processor(prompt, primary_image).to(DEVICE, dtype=torch.bfloat16)
-
-        # Process additional wrist images if any
-        if all_images:
-            all_wrist_inputs = [
-                processor(prompt, image_wrist).to(DEVICE, dtype=torch.bfloat16) for image_wrist in all_images
-            ]
-            # Concatenate all images
-            primary_pixel_values = inputs["pixel_values"]
-            all_wrist_pixel_values = [wrist_inputs["pixel_values"] for wrist_inputs in all_wrist_inputs]
-            inputs["pixel_values"] = torch.cat([primary_pixel_values] + all_wrist_pixel_values, dim=1)
+        # Process each image through the processor (which handles SigLIP+DINOv2 fusion internally,
+        # producing 6 channels per image) and concatenate along the channel dimension.
+        # The vision backbone with num_images=N expects N*6 channels total.
+        all_pixel_values = []
+        first_inputs = None
+        for img in all_images:
+            img_pil = prepare_images_for_vla([img], cfg)[0]
+            single_inputs = processor(prompt, img_pil).to(DEVICE, dtype=torch.bfloat16)
+            all_pixel_values.append(single_inputs["pixel_values"])
+            if first_inputs is None:
+                first_inputs = single_inputs
+        inputs = {
+            "pixel_values": torch.cat(all_pixel_values, dim=1),  # [1, 6*num_images, H, W]
+            "attention_mask": first_inputs["attention_mask"],
+        }
 
         # Process proprioception data if used
         proprio = None
