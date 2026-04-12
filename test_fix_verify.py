@@ -43,12 +43,12 @@ all_imgs = [obs["full_image"]]
 all_imgs.extend([obs[k] for k in obs.keys() if "wrist" in k])
 processed = prepare_images_for_vla(all_imgs, cfg)
 print(f"prepare_images_for_vla output: {len(processed)} PIL images")
-pv_list = []
+all_inputs = []
 for img in processed:
     single = proc("test", img)
-    pv_list.append(single["pixel_values"])
+    all_inputs.append(single)
     print(f"  Single image pixel_values: {single['pixel_values'].shape}")
-concat_pv = torch.cat(pv_list, dim=1)
+concat_pv = torch.cat([inp["pixel_values"] for inp in all_inputs], dim=1)
 print(f"Concatenated pixel_values: {concat_pv.shape}")
 print(f"Expected shape: [1, 12, 224, 224] for num_images_in_input=2")
 
@@ -58,7 +58,7 @@ print("\nTesting predict_action with 2 images...")
 try:
     action, _ = vla.predict_action(
         pixel_values=concat_pv.cuda(),
-        attention_mask=pv_list[0]["attention_mask"].cuda(),
+        attention_mask=all_inputs[0]["attention_mask"].cuda(),
         unnorm_key="libero_spatial_no_noops",
     )
     print(f"SUCCESS! Action shape: {action.shape}")
