@@ -58,7 +58,7 @@ print("\nTesting predict_action with 2 images...")
 try:
     action, _ = vla.predict_action(
         input_ids=all_inputs[0]["input_ids"].cuda(),
-        pixel_values=concat_pv.cuda(dtype=torch.bfloat16),
+        pixel_values=concat_pv.to(device="cuda", dtype=torch.bfloat16),
         attention_mask=all_inputs[0]["attention_mask"].cuda(),
         unnorm_key="libero_spatial_no_noops",
     )
