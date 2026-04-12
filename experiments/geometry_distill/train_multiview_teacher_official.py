@@ -17,7 +17,7 @@ import logging
 import draccus
 import torch
 import torch.distributed as dist
-from peft import LoraConfig, get_peft_model
+from peft import PeftModel, LoraConfig, get_peft_model
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from transformers import AutoModelForVision2Seq, AutoProcessor
@@ -62,6 +62,10 @@ class MultiViewTeacherConfig:
 
     # Output directories
     run_root_dir: str = "./checkpoints/arm_d_multiview"  # Output directory
+
+    # Resume training
+    resume_from_checkpoint: bool = False              # Resume from checkpoint
+    resume_step: int = 0                             # Step to resume from
 
     # Distributed training
     seed: int = 7                                     # Random seed
@@ -130,6 +134,19 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
     vla = get_peft_model(vla, lora_config)
     vla.print_trainable_parameters()
 
+    # Resume from checkpoint if specified
+    start_step = 0
+    if cfg.resume_from_checkpoint and cfg.resume_step > 0:
+        checkpoint_path = run_dir / f"checkpoint-{cfg.resume_step}"
+        if checkpoint_path.exists():
+            logger.info(f"Resuming from checkpoint: {checkpoint_path}")
+            # Load LoRA adapter weights
+            vla.load_adapter(str(checkpoint_path), "default")
+            start_step = cfg.resume_step
+            logger.info(f"Resumed from step {start_step}")
+        else:
+            logger.warning(f"Checkpoint {checkpoint_path} not found, starting from scratch")
+
     # Create action tokenizer
     action_tokenizer = ActionTokenizer(processor.tokenizer)
 
@@ -184,12 +201,17 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
     vla, optimizer, dataloader = accelerator.prepare(vla, optimizer, dataloader)
 
     # Training loop
-    logger.info(f"Starting multi-view teacher training for {cfg.max_steps} steps")
+    logger.info(f"Starting multi-view teacher training for {cfg.max_steps} steps (starting from step {start_step})")
     vla.train()
     optimizer.zero_grad()
 
     global_step = 0
     for batch in dataloader:
+        # Skip batches until we reach start_step
+        if global_step < start_step:
+            global_step += 1
+            continue
+
         with accelerator.accumulate(vla):
             # Forward pass (official OpenVLA handles multi-view internally)
             output = vla(
