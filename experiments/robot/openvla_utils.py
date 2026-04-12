@@ -289,6 +289,16 @@ def get_vla(cfg: Any) -> torch.nn.Module:
         trust_remote_code=True,
     )
 
+    # Load LoRA adapter if present (fine-tuned checkpoints store adapter separately)
+    import os as _os
+    _adapter_file = _os.path.join(cfg.pretrained_checkpoint, "adapter_model.safetensors")
+    _adapter_bin = _os.path.join(cfg.pretrained_checkpoint, "adapter_model.bin")
+    if _os.path.exists(_adapter_file) or _os.path.exists(_adapter_bin):
+        from peft import PeftModel
+        print(f"[get_vla] LoRA adapter detected, loading from {cfg.pretrained_checkpoint} ...")
+        vla = PeftModel.from_pretrained(vla, cfg.pretrained_checkpoint)
+        print(f"[get_vla] LoRA adapter loaded successfully!")
+
     # If using FiLM, wrap the vision backbone to allow for infusion of language inputs
     if cfg.use_film:
         vla = _apply_film_to_vla(vla, cfg)
