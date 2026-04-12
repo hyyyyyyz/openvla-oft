@@ -40,7 +40,7 @@ obs = {
 
 # Test prepare_images_for_vla
 all_imgs = [obs["full_image"]]
-all_imgs.extend([k for k in obs.keys() if "wrist" in k])
+all_imgs.extend([obs[k] for k in obs.keys() if "wrist" in k])
 processed = prepare_images_for_vla(all_imgs, cfg)
 print(f"prepare_images_for_vla output: {len(processed)} PIL images")
 pv_list = []
