@@ -756,10 +756,20 @@ def get_vla_action(
     """
     with torch.inference_mode():
 
-        # Collect all input images
+        # Collect all input images in a fixed, explicit order.
+        # Camera order must match training (full_image first, then wrist cameras).
+        assert cfg.num_images_in_input >= 1, f"num_images_in_input must be >= 1, got {cfg.num_images_in_input}"
         all_images = [obs["full_image"]]
         if cfg.num_images_in_input > 1:
-            all_images.extend([obs[k] for k in obs.keys() if "wrist" in k])
+            # Explicitly ordered camera keys — DO NOT rely on dict key ordering
+            extra_camera_keys = ["wrist_image"]
+            for key in extra_camera_keys:
+                if key in obs:
+                    all_images.append(obs[key])
+            assert len(all_images) == cfg.num_images_in_input, (
+                f"Expected {cfg.num_images_in_input} images from obs, got {len(all_images)}. "
+                f"Keys available: {list(obs.keys())}"
+            )
 
         # Build VLA prompt
         prompt = f"In: What action should the robot take to {task_label.lower()}?\nOut:"
@@ -784,10 +794,9 @@ def get_vla_action(
         # Process proprioception data if used
         proprio = None
         if cfg.use_proprio:
-            proprio = obs["state"]
+            raw_proprio = obs["state"]
             proprio_norm_stats = vla.norm_stats[cfg.unnorm_key]["proprio"]
-            obs["state"] = normalize_proprio(proprio, proprio_norm_stats)
-            proprio = obs["state"]
+            proprio = normalize_proprio(raw_proprio, proprio_norm_stats)
 
         # Generate action
         if action_head is None:
