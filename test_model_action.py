@@ -39,11 +39,13 @@ print("\nAction stats (first 3 dims):")
 for i in range(3):
     print(f"  dim {i}: q01={action_stats['q01'][i]:.3f}, q99={action_stats['q99'][i]:.3f}")
 
+from PIL import Image
 # Quick forward pass with a random image
 print("\nRunning inference...")
-img = np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8)
+img_pil = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
+img_np = np.array(img_pil)
 prompt = "In: What action should the robot take to pick up the black bowl?\nOut:"
-inputs = proc(prompt, img).to("cuda:0", dtype=torch.bfloat16)
+inputs = proc(prompt, img_pil).to("cuda:0", dtype=torch.bfloat16)
 
 print(f"pixel_values shape: {inputs['pixel_values'].shape}")
 
@@ -72,7 +74,7 @@ base_action_dim = base_vla.base_model.model.get_action_dim(unnorm_key)
 print(f"Base model action dim: {base_action_dim}")
 
 # The base model expects single image
-inputs_single = proc(prompt, img).to("cuda:0", dtype=torch.bfloat16)
+inputs_single = proc(prompt, img_pil).to("cuda:0", dtype=torch.bfloat16)
 base_action, _ = base_vla.predict_action(**inputs_single, unnorm_key=unnorm_key)
 print(f"Base model action (first 3 dims): {base_action[:3]}")
 print(f"Base model action range: [{base_action.min():.4f}, {base_action.max():.4f}]")
