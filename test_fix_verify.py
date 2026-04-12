@@ -57,8 +57,9 @@ task_label = "pick up the black bowl"
 print("\nTesting predict_action with 2 images...")
 try:
     action, _ = vla.predict_action(
+        input_ids=first_inputs["input_ids"].cuda(),
         pixel_values=concat_pv.cuda(),
-        attention_mask=all_inputs[0]["attention_mask"].cuda(),
+        attention_mask=first_inputs["attention_mask"].cuda(),
         unnorm_key="libero_spatial_no_noops",
     )
     print(f"SUCCESS! Action shape: {action.shape}")
