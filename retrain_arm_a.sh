@@ -22,15 +22,21 @@ train_arm_a () {
   local suite=$1       # libero_spatial | libero_goal
   local max_steps=$2   # 150000 | 50000
   local out_name=$3    # arm_a_spatial_v3 | arm_a_goal_v3
+  local resume_step=${4:-0}   # 0 = fresh; >0 = resume from that checkpoint
 
   local out_dir="$CKPT_ROOT/$out_name"
 
   echo ""
   echo "==============================================="
-  echo "Training $out_name on $suite ($max_steps steps, single-view)"
+  echo "Training $out_name on $suite ($max_steps steps, single-view, resume_step=$resume_step)"
   echo "  out: $out_dir"
   echo "  started: $(date)"
   echo "==============================================="
+
+  local resume_args=""
+  if [ "$resume_step" -gt 0 ]; then
+    resume_args="--resume_from_checkpoint True --resume_step $resume_step"
+  fi
 
   python experiments/geometry_distill/train_multiview_teacher_official.py \
     --vla_path openvla/openvla-7b \
@@ -44,8 +50,9 @@ train_arm_a () {
     --log_freq 50 \
     --lora_rank 32 \
     --seed 1 \
+    $resume_args \
     --run_root_dir "$out_dir" \
-    2>&1 | tee "${out_name}.log"
+    2>&1 | tee -a "${out_name}.log"
 
   echo "$out_name done at: $(date)"
 
@@ -53,8 +60,11 @@ train_arm_a () {
   python -c "import torch; torch.cuda.empty_cache()" || true
 }
 
-train_arm_a libero_spatial 150000 arm_a_spatial_v3
-train_arm_a libero_goal    50000  arm_a_goal_v3
+# After a 2026-04-20 power outage interrupted the first v3 run at step ~21200,
+# spatial resumes from checkpoint-20000 (saved just before the outage).
+# Change the 4th arg back to 0 for a clean-slate run.
+train_arm_a libero_spatial 150000 arm_a_spatial_v3 20000
+train_arm_a libero_goal    50000  arm_a_goal_v3    0
 
 echo ""
 echo "==============================================="
