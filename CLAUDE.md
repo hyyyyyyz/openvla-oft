@@ -1,9 +1,10 @@
 # CLAUDE.md — VLA Geometry-Critical Failure Diagnosis
 
 ## Pipeline Status
-- **Current Phase**: Phase 2 (Arm A/B Baselines)
-- **Blocker**: None
-- **Next Milestone**: Phase 2 Gate (Multi-view > Single-view by >=5 points)
+- **Current Phase**: Phase 2 → Phase 3 过渡（Gate 1 PASS dirty）
+- **Blocker**: Arm A 训练异常（全 0% 成功率），Phase 3 前必须修复
+- **Next Milestone**: 修复 Arm A 训练 → 重跑 Gate 1 → 启动 B/C 蒸馏
+- **Gate 1 结果 (2026-04-20)**: Arm D G1-G6 mean=79.2% vs Arm A 0%，gap +79.2 pts（门槛 5 pts）
 
 ## Remote Server
 - **gpu**: remote
@@ -53,7 +54,7 @@
 
 - **Phase 0**: Task Freeze + Engineering (T0-T4) ✅ COMPLETED
 - **Phase 1**: Pilot (~60 GPUh) - E0 sanity check ✅ COMPLETED
-- **Phase 2**: A/D Baselines (~150 GPUh) - Gate 1: Multi-view > Single-view by >=5 points 🔄 IN PROGRESS
+- **Phase 2**: A/D Baselines (~150 GPUh) - Gate 1 🟢 PASS dirty（Arm A 需修复）
 - **Phase 3**: B/C Distillation (~400 GPUh) - Gate 2: Recovery >=30%
 - **Phase 4**: Anchor + Mechanism (~380 GPUh)
 - **Phase 5**: Real Robot (~100 GPUh)
