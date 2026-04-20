@@ -135,8 +135,9 @@ def get_action_simple(vla, processor, obs, task_description, num_images, unnorm_
         if num_images > 1:
             all_images.append(obs["wrist_image"])
 
-        # Resize all images
+        # Resize all images, then convert to PIL (processor expects PIL.Image).
         all_images = [resize_image(img, 224) for img in all_images]
+        all_images = [Image.fromarray(img).convert("RGB") for img in all_images]
 
         # Build prompt
         prompt = f"In: What action should the robot take to {task_description.lower()}?\nOut:"
