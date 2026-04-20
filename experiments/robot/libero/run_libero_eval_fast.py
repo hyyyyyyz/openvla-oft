@@ -19,6 +19,7 @@ from typing import Dict, List, Optional
 
 import draccus
 import numpy as np
+import torch
 import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
