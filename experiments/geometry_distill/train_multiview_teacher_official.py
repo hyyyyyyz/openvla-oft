@@ -243,6 +243,9 @@ def train_multiview_teacher(cfg: MultiViewTeacherConfig):
 
         # Logging
         if global_step % cfg.log_freq == 0 and accelerator.is_main_process:
+            # Use print() with flush so the numeric value is preserved in stdout;
+            # the Rich-handler on logger.info() folds long lines and drops values.
+            print(f"[train] step={global_step} loss={loss.item():.6e}", flush=True)
             logger.info(f"Step {global_step}, Loss: {loss.item():.6e}")
 
         # Save checkpoint
