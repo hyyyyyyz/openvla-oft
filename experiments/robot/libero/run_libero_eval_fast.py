@@ -88,10 +88,9 @@ def prepare_observation(obs, resize_size):
     img = get_libero_image(obs)
     wrist_img = get_libero_wrist_image(obs)
 
-    # Resize
-    from PIL import Image
-    img_resized = img.resize((resize_size, resize_size), Image.BILINEAR)
-    wrist_resized = wrist_img.resize((resize_size, resize_size), Image.BILINEAR)
+    # Resize images the same way as the official evaluator.
+    img_resized = resize_image(img, resize_size)
+    wrist_resized = resize_image(wrist_img, resize_size)
 
     observation = {
         "full_image": np.array(img_resized),
@@ -295,7 +294,7 @@ def main(cfg: FastEvalConfig):
 
             if success:
                 task_successes += 1
-            total_successes += 1
+                total_successes += 1
             total_episodes += 1
 
             # Save replay video
