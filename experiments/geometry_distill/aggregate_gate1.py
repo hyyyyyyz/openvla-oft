@@ -56,12 +56,19 @@ def parse_log(log_path: Path, task_id_order):
 
 
 def aggregate_arm(eval_dir: Path, arm: str):
-    """Read both suites for one arm and return {slot: rate} + bucket means."""
+    """Read both suites for one arm and return {slot: rate} + bucket means.
+
+    run_libero_eval.py writes a clean log to
+      <local_log_dir>/EVAL-<suite>-<model_family>-<datetime>.txt
+    We take the most recent EVAL-*.txt under <eval_dir>/<arm>_<suite>/.
+    """
     slot_rates = {}
     for suite in ("libero_spatial", "libero_goal"):
-        log_path = eval_dir / f"{arm}_{suite}.log"
-        if not log_path.exists():
-            raise FileNotFoundError(f"Missing log: {log_path}")
+        log_dir = eval_dir / f"{arm}_{suite}"
+        eval_logs = sorted(log_dir.glob("EVAL-*.txt"))
+        if not eval_logs:
+            raise FileNotFoundError(f"No EVAL-*.txt under {log_dir}")
+        log_path = eval_logs[-1]
         pairs = parse_log(log_path, TASK_ID_ORDER[suite])
         for task_id, rate in pairs:
             slot = FROZEN_TASK_ID_MAP[suite][task_id]
