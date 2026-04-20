@@ -1,10 +1,17 @@
 """
 train_multiview_teacher_official.py
 
-Arm D: Multi-view RGB privileged OpenVLA-OFT teacher training on LIBERO.
-Uses OFFICIAL OpenVLA-OFT multi-view support (static + wrist camera).
+OpenVLA-OFT LoRA fine-tuning on LIBERO with configurable view count.
 
-This is the correct implementation following official finetune.py patterns.
+  * Arm D (multi-view teacher): --num_images_in_input 2  (static + wrist)
+  * Arm A (single-view baseline): --num_images_in_input 1  (static only)
+
+This script is the single source of truth for Arm A / Arm D training.
+The previous train_rgb_baseline_accelerate.py was removed after it was
+found to produce checkpoints that evaluated at 0% success on every task
+(Gate 1 run, 2026-04-20): likely because it never called
+`vision_backbone.set_num_images_in_input(...)` and logging was silently
+broken so loss was never observed during the 150K-step run.
 """
 
 import os
