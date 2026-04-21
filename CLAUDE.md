@@ -1,10 +1,11 @@
 # CLAUDE.md — VLA Geometry-Critical Failure Diagnosis
 
 ## Pipeline Status
-- **Current Phase**: Phase 2 → Phase 3 过渡（Gate 1 PASS dirty）
-- **Blocker**: Arm A 训练异常（全 0% 成功率），Phase 3 前必须修复
-- **Next Milestone**: 修复 Arm A 训练 → 重跑 Gate 1 → 启动 B/C 蒸馏
-- **Gate 1 结果 (2026-04-20)**: Arm D G1-G6 mean=79.2% vs Arm A 0%，gap +79.2 pts（门槛 5 pts）
+- **Current Phase**: Phase 2 重训中（v4 OFT recipe）
+- **Pivot (2026-04-21)**: 从 legacy discrete-token 路径切换到官方 OFT recipe (L1 regression + image_aug + lr decay at 100K)
+- **Blocker**: 无
+- **Next Milestone**: v4 训练 ~54h → merge LoRA → 重跑 Gate 1 → 进入 Phase 3 B/C 蒸馏
+- **弃用 Gate 1 v2 结果**: legacy recipe 下 A 未收敛（0%）vs D 79.2% 是不对称比较，作废
 
 ## Remote Server
 - **gpu**: remote
@@ -54,7 +55,7 @@
 
 - **Phase 0**: Task Freeze + Engineering (T0-T4) ✅ COMPLETED
 - **Phase 1**: Pilot (~60 GPUh) - E0 sanity check ✅ COMPLETED
-- **Phase 2**: A/D Baselines (~150 GPUh) - Gate 1 🟢 PASS dirty（Arm A 需修复）
+- **Phase 2**: A/D Baselines (~210 GPUh) - 🔄 v4 OFT 重训 + 重评 Gate 1
 - **Phase 3**: B/C Distillation (~400 GPUh) - Gate 2: Recovery >=30%
 - **Phase 4**: Anchor + Mechanism (~380 GPUh)
 - **Phase 5**: Real Robot (~100 GPUh)
