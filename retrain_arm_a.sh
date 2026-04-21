@@ -60,10 +60,12 @@ train_arm_a () {
   python -c "import torch; torch.cuda.empty_cache()" || true
 }
 
-# After a 2026-04-20 power outage interrupted the first v3 run at step ~21200,
-# spatial resumes from checkpoint-20000 (saved just before the outage).
-# Change the 4th arg back to 0 for a clean-slate run.
-train_arm_a libero_spatial 150000 arm_a_spatial_v3 20000
+# Power outage history:
+#   2026-04-20 20:01  first v3 interrupted at step ~21200 (checkpoint-20000 saved)
+#   2026-04-21 09:43  fresh v3 interrupted at step ~102850 (checkpoint-100000 saved)
+# Spatial resumes from the last saved checkpoint (100000). Change the 4th arg
+# back to 0 for a clean-slate run.
+train_arm_a libero_spatial 150000 arm_a_spatial_v3 100000
 train_arm_a libero_goal    50000  arm_a_goal_v3    0
 
 echo ""
