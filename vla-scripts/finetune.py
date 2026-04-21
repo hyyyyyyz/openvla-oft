@@ -1073,6 +1073,10 @@ def finetune(cfg: FinetuneConfig) -> None:
             log_step = gradient_step_idx if not cfg.resume else cfg.resume_step + gradient_step_idx
             if distributed_state.is_main_process and log_step % cfg.wandb_log_freq == 0:
                 log_metrics_to_wandb(smoothened_metrics, "VLA Train", log_step, wandb)
+                # Also print to stdout so the run stays observable with W&B disabled
+                loss_v = smoothened_metrics.get("loss_value", None)
+                if loss_v is not None:
+                    print(f"[train] step={log_step} loss={loss_v:.6e}", flush=True)
 
             # [If applicable] Linearly warm up learning rate from 10% to 100% of original
             if cfg.lr_warmup_steps > 0:
