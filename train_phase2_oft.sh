@@ -23,11 +23,17 @@
 # W&B is disabled globally via WANDB_MODE=disabled (CLAUDE.md wandb: false).
 
 set -e
+set -o pipefail   # so `torchrun ... | tee` fails loudly instead of silently
 source /home/hurricane/miniconda3/etc/profile.d/conda.sh
 conda activate openvla-oft
 cd /home/hurricane/VLA/openvla-oft
 export PYTHONPATH=${PYTHONPATH}:LIBERO:.
 export WANDB_MODE=disabled
+# Force HF to use local cache only; the server's connection to huggingface.co
+# is flaky and causes spurious SSLEOFError at processor_config.json fetch.
+# Cache under ~/.cache/huggingface/hub/models--openvla--openvla-7b/ is complete.
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
 
 CKPT_ROOT=/home/hurricane/nvme0/vla_checkpoints
 mkdir -p "$CKPT_ROOT"
