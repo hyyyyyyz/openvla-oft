@@ -72,6 +72,7 @@ train_oft () {
     --save_latest_checkpoint_only False \
     --image_aug True \
     --lora_rank 32 \
+    --merge_lora_during_training False \
     --wandb_entity "disabled" \
     --wandb_project "disabled" \
     --run_id_note "oft_num_images_${num_images}" \
@@ -91,6 +92,24 @@ train_oft arm_a libero_goal    50000  1
 
 echo ""
 echo "==============================================="
-echo "Phase 2 OFT retraining complete."
-echo "  Next: merge LoRA adapters and rerun Gate 1 evaluation"
+echo "Phase 2 OFT training (LoRA-only checkpoints) complete."
+echo "  merge_lora_during_training was disabled to avoid OOM during save;"
+echo "  now merge the four final LoRA adapters into the base model offline:"
+echo ""
+for arm in arm_d arm_a; do
+  for suite in spatial goal; do
+    runid_dir=$(ls -d $CKPT_ROOT/${arm}_${suite}_v4/openvla-7b*oft_num_images_* 2>/dev/null | head -1)
+    if [ -n "$runid_dir" ]; then
+      final_chkpt=$(ls -d ${runid_dir}--*_chkpt 2>/dev/null | sort -V | tail -1)
+      if [ -n "$final_chkpt" ]; then
+        echo "Merging $final_chkpt..."
+        python vla-scripts/merge_lora_weights_and_save.py \
+          --base_checkpoint openvla/openvla-7b \
+          --lora_finetuned_checkpoint_dir "$final_chkpt"
+      fi
+    fi
+  done
+done
+echo ""
+echo "All merges complete. Next: rerun Gate 1 evaluation (run_phase2_gate1_eval.sh)"
 echo "==============================================="
