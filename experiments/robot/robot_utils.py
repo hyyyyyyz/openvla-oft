@@ -171,8 +171,11 @@ def normalize_gripper_action(action: np.ndarray, binarize: bool = True) -> np.nd
     normalized_action[..., -1] = 2 * (normalized_action[..., -1] - orig_low) / (orig_high - orig_low) - 1
 
     if binarize:
-        # Binarize to -1 or +1
-        normalized_action[..., -1] = np.sign(normalized_action[..., -1])
+        # Binarize to -1 or +1.
+        # NOTE: np.sign(0) returns 0 (neutral), which leaves the gripper neither
+        # open nor closed and silently makes the policy unable to grasp anything.
+        # Use an explicit threshold so the output is always ±1.
+        normalized_action[..., -1] = np.where(normalized_action[..., -1] >= 0.0, 1.0, -1.0)
 
     return normalized_action
 
