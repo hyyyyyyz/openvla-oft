@@ -1,15 +1,15 @@
 #!/bin/bash
-# F1 smoke: Arm A OFT, grad_accumulation_steps=4, use_proprio=False, 5K effective steps.
+# Z smoke: Arm A OFT, grad_accumulation_steps=8, use_proprio=False, 5K effective steps.
 #
-# Goal: cheap fail-fast on whether OFT with grad-accum can converge under
-# bs=1 + single-view + no proprio on 3090Ti.
+# Why Z (after F1 with grad_accum=4 plateau'd at 0.19):
+#   F1 cut loss 47% vs v4 baseline but plateau'd before reaching 0.12 target.
+#   Z doubles effective batch (8 vs 4) to test whether batch is the main
+#   bottleneck. Decision rule (per codex):
+#     - Z 5K mean <= 0.16 with continued downward slope -> proceed to Y (full retrain)
+#     - Z 5K still >= 0.18 plateau -> escalate to X (add use_proprio=True)
+#     - 0.16-0.18 still trending down -> Y but treat as engineering bet
 #
-# Fail-fast cutoffs (mean loss over last few hundred logs):
-#   step 1000 effective steps still >= 0.25 horizontal -> dead
-#   step 3000 effective steps still >= 0.20 / no clear downward slope -> dead
-#   step 5000 effective steps <= 0.12 with downward slope -> proceed to full run
-#
-# Output dir: arm_a_spatial_v5_smoke (so it does not collide with v4 dirs).
+# Output dir: arm_a_spatial_v5_smoke_g8
 
 set -e
 set -o pipefail
@@ -22,11 +22,11 @@ export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
 
 CKPT_ROOT=/home/hurricane/nvme0/vla_checkpoints
-OUT_DIR=$CKPT_ROOT/arm_a_spatial_v5_smoke
+OUT_DIR=$CKPT_ROOT/arm_a_spatial_v5_smoke_g8
 mkdir -p "$CKPT_ROOT"
 
 echo "==============================================="
-echo "F1 smoke: Arm A OFT, grad_accum=4, 5K effective steps"
+echo "Z smoke: Arm A OFT, grad_accum=8, 5K effective steps"
 echo "  out: $OUT_DIR"
 echo "  started: $(date)"
 echo "==============================================="
@@ -42,7 +42,7 @@ torchrun --standalone --nnodes 1 --nproc-per-node 1 vla-scripts/finetune.py \
   --num_images_in_input 1 \
   --use_proprio False \
   --batch_size 1 \
-  --grad_accumulation_steps 4 \
+  --grad_accumulation_steps 8 \
   --learning_rate 5e-4 \
   --num_steps_before_decay 100000 \
   --max_steps 5000 \
@@ -53,11 +53,10 @@ torchrun --standalone --nnodes 1 --nproc-per-node 1 vla-scripts/finetune.py \
   --merge_lora_during_training False \
   --wandb_entity "disabled" \
   --wandb_project "disabled" \
-  --run_id_note "f1_smoke_grad_accum_4_no_proprio" \
-  2>&1 | tee smoke_f1.log
+  --run_id_note "z_smoke_grad_accum_8_no_proprio" \
+  2>&1 | tee smoke_z.log
 
 echo ""
 echo "==============================================="
-echo "F1 smoke done at: $(date)"
-echo "Decision: read [train] step=N loss=L lines from smoke_f1.log."
+echo "Z smoke done at: $(date)"
 echo "==============================================="
